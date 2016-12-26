@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <link rel="stylesheet" type="text/css"
+          href="//css.gomein.net.cn/??/gmlib/reset/1.1.0/reset.css,gmpro/1.0.0/public/1.0.0/css/top.min.css,gmpro/1.0.0/public/1.0.0/css/head.min.css,gmpro/1.0.0/public/1.0.0/css/foot.min.css,gmpro/1.0.0/public/1.0.0/css/aside.min.css?v=201612201342"/>
+
+
+    <link rel="stylesheet" type="text/css"
+          href="//css.gomein.net.cn/??/gmpro/1.0.0/cart/1.0.0/css/i/sprite.min.css,gmpro/1.0.0/cart/1.0.0/css/common.min.css,gmlib/unit/gcity/1.0.0/gcity.min.css,gmpro/1.0.0/cart/1.0.0/css/cart-ui.min.css?v=161207">
+
+
+    <link rel="stylesheet" type="text/css"
+          href="//css.gomein.net.cn/??/gmlib/unit/gstore/1.0.0/gstore.min.css,gmpro/1.0.0/cart/1.0.0/css/shopping.min.css?v=161207">
+    <style>
+        .add_table td {
+            padding: 6px 0;
+        }
+
+        .pr {
+            position: relative;
+        }
+
+        .add_select {
+            border: 1px solid #ccc;
+            display: inline-block;
+            padding: 0 10px 0 10px;
+            height: 28px;
+            line-height: 28px;
+            color: #333;
+        }
+
+        a {
+            text-decoration: none;
+        }
+
+        
+        .area-box-item {
+        }
+        .area-box-box {
+
+        }
+    </style>
+    <script src="https://cdn.staticfile.org/jquery/1.7.2/jquery.min.js"></script>
+    <script src="jquery.cStore.config.js"></script>
+    <script src="jquery.cStore.test.js"></script>
+    <script src="jquery.cStore.template.js"></script>
+    <script src="jquery.cStore.js"></script>
+</head>
+<body>
+<div>
+    <div style="float:left"><i class="fontRed">* </i>所在地：</div>
+    <div colspan="4 ">
+        <div style="float:left;" class="pr" id="js_store">
+                <span  class="eye-protector-processed">
+                    <a href="javascript:void(0)" name="address"
+                       value="11000000.11010000" class="add_select eye-protector-processed">
+                        <span show-label="">北京北京市朝阳区朝外街道</span>
+                    </a>
+                </span>
+        </div>
+    </div>
+    <script>
+        $(function () {
+            var options = {
+                value: [11000000, 11010000]
+                , district: cStoreDist.data
+            };
+            $('#js_store').cStore(options);
+        });
+    </script>
+</body>
+</html>
