@@ -348,12 +348,11 @@
                     ,checked = _m.getCheckedStatusData.call(this);
 
                 for(var o in s){
-                    if(s[o]){
                         $title.find('[area-title-'+o+']')
                             .data('no',checked[o].no)
                                 .find('b').text(checked[o].name);
                         console.log( 'area-title-'+o,$title.find('area-title-'+o).html());
-                    }
+
                 }
             }
             ,renderBoxsToTpl: function(){
@@ -362,7 +361,7 @@
                 var tplFn = function(type){
                     return '<div class="gctBox area-box-box" '
                             +'data-type="'+type+'" area-box-item '
-                                +' area-box-'+type+' ></div>';
+                                +' area-box-'+type+' style="display: none"></div>';
                 };
                 for(var i= 0,len=TYPES.length; i<len; i++){
                     var one = TYPES[i];
@@ -371,7 +370,37 @@
                 $box.html(html);
             }
             ,renderBoxsByCheckedStatus: function(){
+                var $boxs = this.$ele.find('[area-box]')
+                    ,$box = {}
+                    ,s = this.settings.isSelected //因为 isSelected 可以变
+                    ,checked = _m.getCheckedStatusData.call(this);
 
+                var ftl = function(d,type){
+                    //TODO 这个数据处理有问题，完全依赖于后端返回数据结构，应该init时对数据进行清洗一次
+                    return ' <span><a href="javascript:;" title="" data-no="'
+                        +d.no+'data-type="'+type+'"area-box-'+type+'"'
+                        +'" data-val="" class="area-box-item"  >'
+                        +d.name+'</a></span>';
+                };
+                function renderBoxs(type){
+                    var html = '';
+                    var datas = this.settings[type+'s'];
+                    if(!datas){
+                        util.showDebug('function renderBoxsByCheckedStatus中数据为空');
+                        return;
+                    }
+                    for(var i=0,len=datas.length; i<len; i++){
+                        var data = datas[i];
+                        html += ftl(data,type);
+                    }
+                    $box = $boxs.find('[area-box-'+o+']');
+                    $box.html(html);
+                }
+                for(var o in s){
+                    if(s[o]){
+                        renderBoxs.call(this, o);
+                    }
+                }
             }
         };
 

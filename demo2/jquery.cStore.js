@@ -287,7 +287,7 @@
                 var ftl = function(d){
                     //TODO 这个数据处理有问题，完全依赖于后端返回数据结构，应该init时对数据进行清洗一次
                     return ' <span><a href="javascript:;" title="" data-no="'
-                        +d.no+'" data-val="" class="eye-protector-processed area-box-item" >'
+                        +d.no+'" data-val="" class="area-box-item" >'
                         +d.name+'</a></span>';
                 };
                 var district =  this.getDataDistrict();
