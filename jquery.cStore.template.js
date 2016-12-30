@@ -9,36 +9,18 @@
     };
     var html = ms(function(){/*
      <div class="pr add_out hide">
-            <em class="pabs c-i arrowup add_up2"></em>
-             <i class="pabs add_close strong fontb eye-protector-processed" g-area-close=""
-            >╳</i>
-             <div class="gCity eye-protector-processed">
-             <div area-title class="gctSelect clearfix eye-protector-processed">
-             <a href="javascript:;" area-title-province data-val="1" data-lnk="">
-             <b>北京1</b>
-             <i></i>
-             </a>
-             <a href="javascript:;" area-title-city data-val="2" data-lnk="">
-             <b>北京市1</b>
-             <i></i>
-             </a>
-             <a href="javascript:;" area-title-district data-val="3" data-lnk="">
-             <b>朝阳区1</b>
-             <i></i>
-             </a>
-             <a href="javascript:;" area-title-store data-val="4" data-lnk="" class="cur">
-             <b>门店1</b>
-             <i></i>
-             </a>
-             <a href="javascript:;" id="cityClose" class="close"></a>
-             </div>
-             <div id="area-box">
-             <div class="gctBox eye-protector-processed area-box-box" data-type="district" area-box-item area-box-district ></div>
-             <div class="gctBox eye-protector-processed area-box-box" data-type="store" area-box-item area-box-store ></div>
-             </div>
-             </div>
+     <em class="pabs c-i arrowup add_up2"></em>
+     <i class="pabs add_close strong fontb  " g-area-close=""
+     >╳</i>
+     <div class="gCity  ">
+     <div area-title="" class="gctSelect clearfix  ">
+     <a href="javascript:;" id="cityClose" class="close"></a>
      </div>
-             */});
+     <div area-box="">
+     </div>
+     </div>
+     </div>
+     */});
 
-     window.cStore_template = html;
+    window.cStore_template = html;
 })(window);

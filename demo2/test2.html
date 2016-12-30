@@ -35,6 +35,12 @@
             text-decoration: none;
         }
 
+        
+        .area-box-item {
+        }
+        .area-box-box {
+
+        }
     </style>
     <script src="https://cdn.staticfile.org/jquery/1.7.2/jquery.min.js"></script>
     <script src="jquery.cStore.config.js"></script>
@@ -49,7 +55,7 @@
         <div style="float:left;" class="pr" id="js_store">
                 <span  class="eye-protector-processed">
                     <a href="javascript:void(0)" name="address"
-                       value="11000000.11010000." class="add_select eye-protector-processed">
+                       value="11000000.11010000" class="add_select eye-protector-processed">
                         <span show-label="">北京北京市朝阳区朝外街道</span>
                     </a>
                 </span>
@@ -58,7 +64,8 @@
     <script>
         $(function () {
             var options = {
-                value: [11000000,11010000,11010200,'A56']
+                value: [11000000, 11010000]
+                , district: cStoreDist.data
             };
             $('#js_store').cStore(options);
         });

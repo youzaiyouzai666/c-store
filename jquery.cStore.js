@@ -4,51 +4,97 @@
  */
 ;(function ($, window) {
     "use strict";
-    var settings,
-        $thisDom,
-        TYPES = ['province','city','district','store'],
-        defaults = {
+    var TYPES = ['province','city','district','store']
+        ,template = ''
+        ,defaults = {
             value: [11000000,11010000,11010200]//省市区县
-            ,debugger: false //调试模式
-            ,province:{}
-            ,city: {}
-            ,district: {}//区数据是 传值（必须）
+            ,debug: true //调试模式
             ,defaultTitle:['请选择','请选择','请选择','门店'] //默认显示
-            ,structure: {
-                district: {
-                    no: 'countyCode'
-                    ,name: 'countyName'
+            ,structure:{
+                provinces: {
+                    no: 'id'
+                    ,name: 'name'
                     ,parent: null
-                    ,children: 'gomeStoreShippings'
+                    ,children: 'childerns'
                     ,childrens: {
-                        no: 'storeHQCode'
+                        no: 'id'
                         ,name: 'name'
-                        ,parent: 'countyCode'
-                        ,children: null
+                        ,parent: null
+                        ,children: 'childerns'
+                        ,childrens: {
+                            no: 'id'
+                            ,name: 'name'
+                            ,parent: null
+                            ,children: 'childerns'
+                        }
                     }
+                }
+                ,stores: {
+                    no: 'storeCode'
+                    ,name: 'name'
+                    ,parent: 'countyCode'
+                    ,children: null
+                    ,mobile: 'storeZonePhone'
+                    ,address: 'address'
                 }
             }
             ,callback:function(data){
-                //data == {province: {name: no}, city: {name: no}, district: {name: no}, store: {name: no}, stores: Array[3]}
+                //data == {province: {name:"", no:123456}, city: {name:"", no:123456}, district: {name:"", no:123456}, store: {name:"", no:123456}, stores: Array[3]}
                 var html =data.province.name
                     + data.city.name
                     +data.district.name
                     + data.store.name;
                 $('#js_store').find('.add_select').html(html);
             }
-            ,checkedStatus: {
+            ,initLoadDo: function(data){
+                console.log(data);
+            }
+            //与TYPES强耦合
+            ,isSelected: {
+                province: false
+                ,city: false
+                ,district: true
+                ,store: true
+            }
+            ,provinces:{}
+            ,citys: {}
+            ,districts: {}
+            ,stores: {}
+            ,checkedStatus: ''
+            ,checkedStatusData: {
                 province:{}
                 ,city: {}
                 ,district: {}
                 ,store: {}
-                ,stores: []////与区域值一起传来（必须）
-
             }
         };
+
+    /**********************************Object*********************************/
+    var CStore = function(ele, opt){
+        this.$ele = $(ele);
+        this.settings = $.extend(true,{},opt);
+        this.init();
+    };
+    CStore.prototype = {
+        init: function() {
+           _c.init.call(this);
+        }
+        ,show: function(e) {
+
+        }
+        ,hide: function(e) {
+
+        }
+    };
+
+    /*********************************util************************************/
     var util = (function() {
         return {
             isArrayFn: function (o) {
                 return Object.prototype.toString.call(o) === '[object Array]';
+            }
+            ,isStringFn: function(str){
+                return typeof str === "string";
             }
             ,isEmptyObject: function(e){
                 var t;
@@ -56,430 +102,383 @@
                     return !1;
                 return !0
             }
-            ,showDebugger: function(err){
-                if(settings.debugger){
+            ,showDebug: function(err){
+                if(settings.debug){
                     console.log(err);
                 }
             }
             ,isFunction: function(fn){
                 return Object.prototype.toString.call(fn)=== '[object Function]';
             }
+            ,ajaxGet: function(url,data,callback,err){
+                var jqxhr = $.ajax({
+                    url: url,
+                    type: "GET",      // 默认值GET，可根据需要配置
+                    cache: true,      // 默认值true, dataType是'script'或'jsonp'时为false，可根据需要配置
+                    data: data || {},         // 请求参数对象
+                    dataType: "jsonp", // 设置数据类型
+                    jsonp: "callback",// 只在操作JSONP时设置此项
+                    statusCode: {     // 针对特定错误码的回调处理函数
+                        404: err,
+                        500: err
+                    }
+                });
+                jqxhr.done(callback);//这里this无法传递
+                jqxhr.fail(err);
+            }
+            ,firstUpperCase: function(str){
+                if(!str || !this.isStringFn(str)){
+                   return ''
+                }
+                return str.replace(/^\S/,function(s){return s.toUpperCase()});
+            }
+            ,arrayValueToIndex: function(arg, value){
+                var i=0,
+                    len = arg.length;
+                for(i; i<len; i++){
+                    if(arg[i] === value){
+                        return i;
+                    }
+                }
+                return -1;
+            }
+            /********************业务工具************************************/
+            ,_getCheckData: function(lists, no){
+                for(var i=0,len=lists.length; i<len; i++){
+                    var one = lists[i];
+                    if(one.no == no){
+                        return one;
+                    }
+                }
+                return false;
+            }
+            ,_isEmptyObjToAttrNull: function(objs){
+                var obj =  jQuery.extend(true, {}, objs);
+                for(var o in obj){
+                    if(!obj[o] || this.isEmptyObject(obj[o])){
+                        obj[o]= null;
+                    }
+                }
+                return obj;
+
+            }
+            ,_getTemplate: function(){
+                if(!window.cStore_template){
+                    $.error('模板加载异常，请检查模板 by jquery.cStore ' );
+                }
+                return window.cStore_template;
+            }
         }
     })();
 
-    //private function
-    var _f = (function() {
-        var isRenderCity = true,
-            isRenderDistrict = true,
-            isRenderStore = true;
-        var _m = {
-            verifySettings: function(){
-                var v = settings.value;
-                if(!v || !util.isArrayFn(v) || v.length<2){//前两个是必传
-                    $.error( 'cStore options.value be at fault on jQuery.cStore' );
-                    return false;
+    /**********************************MVC*********************************/
+    var _m = (function() {
+        var _f = {
+            parseData: function(data, structure){
+                var objs = [];
+                if(!data || !util.isArrayFn(data) || data.length<1 || !structure){
+                    return ''
                 }
-                return true;
+                for(var i=0,len=data.length; i<len; i++){
+                    var one = data[i];
+                    var obj = {
+                        no: one[structure.no] || -1,
+                        name: one[structure.name] || '',
+                        parent: one[structure.parent] || '',
+                        children: this.parseData(one[structure.children],structure.childrens)
+                    };
+                    objs.push(obj);
+                }
+                return objs;
             }
-            ,initCheckedStatus: function(){
-                if(!this.verifySettings()){
-                    $.error( 'cStore verifySettings be at fault on jQuery.cStore' );
+            ,parseDateSpe: function(data, structure){
+                var objs = [];
+                if(!data || !util.isArrayFn(data) || data.length<1 || !structure){
+                    return ''
                 }
-                var v = settings.value;
+                for(var i=0,len=data.length; i<len; i++){
+                    var one = data[i];
+                    var obj = {};
+                    //TODO 将两个方法合成一个方法 （没有递归 所以可以这么玩 ）
+                    for(var attr in structure){
+                        obj[attr] = one[structure[attr]];
+                    }
+                    objs.push(obj);
+                }
+                return objs;
+            }
+            ,dealDataCheckedStatusToSettings: function(){
+                var s = this.settings
+                    ,v = s.value;
 
-                this.setCheckProvince(v[0]);
-                this.setCheckCity(v[1]);
-                if(v[2]){
-                    this.setCheckDistrict(v[2]);
+                for(var i=0,len=v.length; i<len; i++){
+                    _f._dealDataCheckedStatusToSettingsByItem.apply(this,[v[i],TYPES[i]]);
+                    // eval('_f._dealDataCheckedStatusToSettingsBy'+ util.firstUpperCase(TYPES[i])+'();');
                 }
-                if(v[3]){
-                    this.setCheckStore(v[3]);
+            }
+            ,_dealDataCheckedStatusToSettingsByItem: function(no,type){
+                var item = {}
+                    ,s = this.settings;
+                if(!no || !type){
+                    $.error( '_dealDataCheckedStatusToSettingsByItem 参数有误 on jQuery.cStore' );
                 }
 
-            }
-            ,loadTemplate: function(){
-                if(!window.cStore_template){
-                    $.error('cStore template no read by jquery.cStore ' );
+                function dealData() {
+                    item = util._getCheckData(s[type + 's'], no);
+                    s.checkedStatusData[type] = item;
                 }
-                if($thisDom.find('.gCity').length > 0){
-                    util.showDebugger('template已经加载');
-                    return false;
-                };
-                var tpl = window.cStore_template;
-                $thisDom.append(tpl);
-            }
-            ,renderBoxItems: function(){
-                var types = TYPES,
-                    html = '';
-                var tplFn = function(type){
-                    return '<div class="gctBox eye-protector-processed area-box-box" '
-                        +'data-type="'+type+'" area-box-item ' +
-                        ' area-box-'+type+' ></div>';
-                }
-                for(var i= 0,len=types.length; i<len; i++){
-                    var one = types[i];
-                    html += tplFn(one);
-                }
-                $thisDom.find('#area-box').html(html);
-
-            }
-            ,getDataProvince: function(no, callback){
-                if(callback && util.isFunction(callback)){
-                    callback();
-                }
-            }
-            ,getDataCity: function(no, callback){
-                if(callback && util.isFunction(callback)){
-                    callback();
-                }
-            }
-            ,getDataDistrict: function(no, callback){
-                if(callback && util.isFunction(callback)){
-                    callback(settings.district);
-                }
-                return settings.district;
-            }
-            ,getDataStore: function(no,callback){
-                if(callback && util.isFunction(callback)){
-                    callback();
-                }
-            }
-            ,setCheckProvince: function(no){
-                if(!no || !settings.province){
-                    $.error( 'setCheckProvince 参数有误 on jQuery.cStore' );
-                }
-                if(!settings.province[no]){
-                    $.error( 'config 省中无no='+ no);
-                }
-                settings.checkedStatus.province = {
-                    no: no
-                    ,name: settings.province[no]
-                    ,parent: null
-                }
-                return this;
-            }
-            ,setCheckCity: function(no){
-                var pno = settings.checkedStatus.province.no;
-                if(!no || !settings.city || !pno){
-                    $.error( 'setCheckProvince 参数有误 on jQuery.cStore' );
-                }
-                if(!settings.city[pno][no]){
-                    $.error( 'config city中无no='+ no);
-                }
-                settings.checkedStatus.city = {
-                    no: no
-                    ,name: settings.city[pno][no]
-                    ,parent: settings.checkedStatus.province
-                }
-                return this;
-            }
-            ,setCheckDistrict: function(no){
-                var district = this.getDataDistrict();
-                if(!district || !util.isArrayFn(district) || district.length<1){
-                    $.error( 'setCheckDistrict 参数有误 on jQuery.cStore' );
-                }
-                for(var i=0,len=district.length; i<len; i++){
-                    if(district[i].no ==  no ){
-                        settings.checkedStatus.district = {
-                            no: no,
-                            name: district[i].name,
-                            parent: settings.checkedStatus.city
-                        };
-                        settings.checkedStatus.stores = district[i].children || [];
-                        return this;
+                function dealDataChildren() {
+                    var  index = -1
+                        ,childType = '';
+                    index = util.arrayValueToIndex(TYPES, type);
+                    if (item.children && TYPES[index + 1]) {
+                        childType = TYPES[index + 1];
+                        if (item.children && util.isArrayFn(item.children)) {
+                            s[childType + 's'] = item.children;
+                        }
                     }
                 }
+
+                dealData();
+                dealDataChildren();
+
                 return this;
-            }
-            ,setCheckStore: function(no){
-                var stores = settings.checkedStatus.stores;
-                if(!stores || !util.isArrayFn(stores) || stores.length<1){
-                    $.error( 'setCheckStore 参数有误 on jQuery.cStore' );
-                }
-                for(var i=0,len=stores.length; i<len; i++ ){
-                    var s = stores[i];
-                    if(s.no == no){
-                        settings.checkedStatus.store = {
-                            no: no,
-                            name: s.name || '',
-                            parent: settings.checkedStatus.district
-
-                        };
-                        return this;
-                    }
-
-                }
-            }
-            ,setShowAllTitle: function(){
-                if(!_m.verifySettings()){
-                    $.error( 'cStore verifySettings be at fault on jQuery.cStore' );
-                }
-                var checked = settings.checkedStatus;
-
-                _m.setShowProvince(checked.province);
-                _m.setShowCity(checked.city);
-                _m.setShowDistrict(checked.district);
-                _m.setShowStore(checked.store);
-
-            }
-            ,setShowBox: function(){
-                if(!_m.verifySettings()){
-                    $.error( 'cStore verifySettings be at fault on jQuery.cStore' );
-                }
-            }
-            ,setShowProvince: function(checked){
-                if(!checked || !checked.name){
-                    return false;
-                }
-                $thisDom.find('[area-title-province] b').text(checked.name);
-
-            }
-            ,setShowCity: function(checked){
-                if(!checked || !checked.name){
-                    return false;
-                }
-                $thisDom.find('[area-title-city] b').text(checked.name);
-            }
-            ,setShowDistrict: function(checked){
-                var $showDom = $thisDom.find('[area-title-district] b');
-
-                if(!checked || !checked.name){
-                    $showDom.text(settings.defaultTitle[2]);
-                    return false;
-                }
-                $showDom.text(checked.name);
-            }
-            ,setShowStore: function(checked){
-                var $showDom =  $thisDom.find('[area-title-store] b');
-                if(!checked || !checked.name){
-                    $showDom.text(settings.defaultTitle[3]);
-                    return false;
-                }
-                $showDom.text(checked.name);
-            }
-            /**
-             * title 切换状态
-             * @param type
-             */
-            ,cutTitleStatus: function(type){
-                var $selected = $thisDom.find('[area-title]');
-                $selected.find('a').removeClass('cur');
-                $selected.find('[area-title-'+type+']').addClass('cur');
-            }
-            ,cutBoxStatus: function(type){
-                var $selected = $thisDom.find('#area-box');
-                $selected.find('[area-box-item]').hide();
-                $selected.find('[area-box-'+type+']').show();
-            }
-            ,renderBox: function(){
-                if(settings.value && settings.value[2]) {
-                    this.renderDistrict();
-                }
-                if(settings.value && settings.value[3]){
-                    this.renderStore();
-                }
-            }
-            ,renderCity: function(){
-
-            }
-            ,renderDistrict: function(){
-                var html = '';
-                var ftl = function(d){
-                    //TODO 这个数据处理有问题，完全依赖于后端返回数据结构，应该init时对数据进行清洗一次
-                    return ' <span><a href="javascript:;" title="" data-no="'
-                        +d.no+'" data-val="" class="eye-protector-processed area-box-item" >'
-                        +d.name+'</a></span>';
-                };
-                var district =  this.getDataDistrict();
-                if(!district || !util.isArrayFn(district) || district.length<1){
-                    $.error( 'selectorDistrict 参数有误 on jQuery.cStore' );
-                }
-                for(var i=0,len=district.length; i<len; i++){
-                    var one = district[i];
-                    html += ftl(one);
-                }
-                $thisDom.find('[area-box-district]').html(html);
-            }
-            ,renderStore: function(){
-                var html = '';
-                var ftl = function(d){
-                    //TODO 这个数据处理有问题，完全依赖于后端返回数据结构，应该init时对数据进行清洗一次
-                    return ' <span><a href="javascript:;" title="" data-no="'
-                        +d.no+'" data-val="" class="eye-protector-processed area-box-item" >'
-                        +d.name+'</a></span>';
-                };
-                var stores = settings.checkedStatus.stores;
-                if(!stores || !util.isArrayFn(stores) || stores.length<1){
-                    $.error( 'setCheckStore 参数有误 on jQuery.cStore' );
-                }
-                //TODO 处理数据 重新整理数据结构
-                for(var i=0,len=stores.length; i<len; i++){
-                    var one = stores[i];
-                    html += ftl(one);
-                }
-                $thisDom.find('[area-box-store]').html(html);
             }
         };
         return {
-            parseData: function(){
-                var district = settings.district
-                    ,structureD = settings.structure.district
-                    ,structureS = settings.structure.district.childrens;
+            initLoadDataByAsync: function(next){
+                var count = 0,
+                    oThis = this;
 
-                var _parseData = function(data,structure){
-                    var parse = [];
-                    if(!data || !util.isArrayFn(data) || data.length<1 || !structure){
-                        return ''
+                _m.loadDataThreeByAsync.call(oThis,function(data){
+                    oThis.settings.provinces = data;
+                    handle();
+                });
+                if(oThis.settings.value.length >=3){
+                    _m.loadDataEndByAsync.call(oThis,oThis.settings.value[2],function(data){
+                        oThis.settings.stores = data;
+                        handle();
+                    });
+                }else{
+                    handle();
+                }
+                /**
+                 * 并行 当且上面两个async 请求都完成后才触发
+                 */
+                function handle(){
+                    count++;
+                    if(count === 2){
+                        next.call(oThis);
                     }
-                    for(var i=0,len=data.length; i<len; i++){
-                        var one = data[i];
-                        parse.push({
-                            no: one[structure.no] || -1,
-                            name: one[structure.name] || '',
-                            children: _parseData(one[structure.children],structureS)
-                        });
-                    }
-                    return parse;
+                }
+            }
+            ,loadDataThreeByAsync: function(next){
+                var structure = this.settings.structure.provinces,
+                    oThis = this;
+                var callback = function(data){
+                    next.call(oThis, _f.parseDateSpe(data, structure))
                 };
+                //TODO 接口需要cookie 所以先关闭
+                /* util.ajaxGet.apply(this,[url.loadDataThreeByAsync,callback]);*/
+                next.call(this, _f.parseData(cStore_config.data, structure));
+            }
+            ,loadDataEndByAsync: function(no,next){
+                var structure = this.settings.structure.stores
+                    ,oThis = this
+                    ,data = {
+                        countyCode:no
+                    };
+                var callback = function(data){
+                    next.call(oThis, _f.parseDateSpe(data, structure))
+                };
+                /*util.ajaxGet(url.loadDataEndByAsync,data,callback);*/
+                next.call(this, _f.parseDateSpe(cStore_config.stores.data, structure));
+            }
+            ,dealDataCheckedStatusToSettings: function(){
+                _f.dealDataCheckedStatusToSettings.call(this);
+            }
+            /**
+             * 因 checkedStatus 与 checkedStatusData 耦合关系
+             * 通过checkedStatus 得到 checkedStatusData
+             * 问题是： 在get 方法中 级联 改了checkedStatusData本身，但为了 
+             * @returns {defaults.checkedStatusData|{province, city, district, store}|{province, city, district, store, stores}}
+             */
+            ,getCheckedStatusData: function(){
+                var isNull = false
+                    ,data = this.settings.checkedStatusData;
 
-                settings.district = _parseData(district,structureD);
-            }
-            ,setSettings: function(){
-                if(!_m.verifySettings()){
-                    $.error( 'cStore verifySettings be at fault on jQuery.cStore' );
-                }
-                _m.initCheckedStatus();
-            }
-            ,show: function(e) {
-                _f.showContent();
-                $thisDom.find('.add_out').removeClass('hide');
-                $thisDom.find('.gCity').show();
+                for(var i,len=TYPES.length; i<len; i++){
+                    var one = TYPES[i];
+                    if(isNull){
+                        data[one] = {};
+                    }
+                    if(one === this.settings.checkedStatus){
+                        isNull = true;
+                    }
 
-            }
-            ,showContent: function(){
-                _f.setShowAllTitle();
-                if(util.isEmptyObject(settings.checkedStatus.district)){
-                    _f.selectorDistrict();
-                }else if(util.isEmptyObject(settings.checkedStatus.store)){
-                    _f.selectorStore();
                 }
-                //TODO 整理这个逻辑
+                return data;
+            }
+            ,setCheckedStatus: function(){
 
-            }
-            ,hide: function(e) {
-                /* $thisDom.find('.add_out').addClass('hide');
-                 $thisDom.find('.gCity').hide();*/
-                console.log('hide');
-            }
-            ,initTemplate: function(){
-                _m.loadTemplate();
-                _m.renderBoxItems();
-            }
-            ,verifySettings: _m.verifySettings
-            ,setShowAllTitle: _m.setShowAllTitle
-            ,setShowBox: _m.setShowBox
-            ,renderBox: _m.renderBox
-            ,renderDistrict: _m.renderDistrict
-            ,renderStore: _m.renderStore
-            ,selectorProvince: function(e){
-
-            }
-            ,selectorCity: function(e){
-                if(isRenderCity){
-                    _m.renderCity();
-                    isRenderCity = false;
-                }
-                _m.cutTitleStatus('city');
-                _m.cutBoxStatus('city');
-            }
-            ,selectorDistrict: function(e){
-                if(isRenderDistrict){
-                    _m.renderDistrict();
-                    isRenderDistrict = false;
-                }
-                _m.cutTitleStatus('district');
-                _m.cutBoxStatus('district');
-            }
-            ,selectorStore: function(e){
-                if(isRenderStore){
-                    _m.renderStore();
-                    isRenderStore = false;
-                }
-                _m.cutTitleStatus('store');
-                _m.cutBoxStatus('store');
-            }
-            ,selectorBoxItem: function(e){
-                var $target = $(e.target)
-                    ,no = $target.data('no') || 0
-                    ,type = $target.parents('[area-box-item]').data('type');
-                if(type && type==='district'){//if 是区域选中
-                    settings.checkedStatus.store = {};
-                    _m.setCheckDistrict(no);
-                    _m.setShowAllTitle();
-                    _m.renderStore();
-                    //TODO 特殊情况处理
-
-                    _f.showContent();
-                }
-                if(type && type==='store'){
-                    _m.setCheckStore(no);
-                    _m.setShowAllTitle();
-                    settings.callback(settings.checkedStatus);
-                    _f.hide();
-                }
             }
         }
     })();
 
-    // public function
-    var methods = {
-        init: function( options ) {
-            return this.each(function (){//return jquery object
-                var $this = $thisDom =  $(this);
-                _f.initTemplate();
-                // parameter setting
-                settings = $.extend({}, defaults, options);//每次 都重置setting
-                // 填入插件代码
-                _f.parseData();//处理过滤数据数据
-                _f.setSettings();//初始化 settings 参数
-                $this.hover(function(e){
-                    methods.show(e);
-                },function(e){
-                    methods.hide(e);
-                });
-                methods.addEvents();
-            });
-        },
-        show: function(e) {
-            _f.show(e);
+    var _v = (function(){
+        var _f = {
+            renderTitlesToTpl: function(){
+                var $title = this.$ele.find('[area-title]')
+                    ,html = ''
+                    ,s = TYPES;
 
-        },
-        hide: function(e) {
-            _f.hide(e);
-        },
-        addEvents: function(){
-            $thisDom.find('[g-area-close]').on('click',$.proxy(this.hide, this));//‘X’关闭绑定事件
-            $thisDom.find('[area-title-province]').on('click',$.proxy(_f.selectorProvince, this));
-            $thisDom.find('[area-title-city]').on('click',$.proxy(_f.selectorCity, this));
-            $thisDom.find('[area-title-district]').on('click',$.proxy(_f.selectorDistrict, this));//区域选择器事件
-            $thisDom.find('[area-title-store]').on('click',$.proxy(_f.selectorStore, this));//区域选择器事件
-            $thisDom.find('[area-box-item]').on('click', $.proxy(_f.selectorBoxItem, this)); //区域属性选择器
+                for(var i=0,len=s.length; i<len; i++){
+                    var o = s[i];
+                    html+= '<a href="javascript:;" area-title-'+ o +'=""'
+                        +'data-type="'+ o +'" '
+                        +'data-no="'+ -1 +'"> '
+                        +'<b>'+ this.settings.defaultTitle[i]  +'</b> '
+                        +'<i></i> </a>';
+                }
+                $title.html(html);
+            }
+            ,renderTitlesByCheckedStatus: function(){
+                var $title = this.$ele.find('[area-title]')
+                    ,s = this.settings.isSelected //因为 isSelected 可以变
+                    ,checked = _m.getCheckedStatusData.call(this);
+
+                for(var o in s){
+                    if(s[o]){
+                        $title.find('[area-title-'+o+']')
+                            .data('no',checked[o].no)
+                                .find('b').text(checked[o].name);
+                        console.log( 'area-title-'+o,$title.find('area-title-'+o).html());
+                    }
+                }
+            }
+            ,renderBoxsToTpl: function(){
+                var $box = this.$ele.find('[area-box]')
+                    ,html = '';
+                var tplFn = function(type){
+                    return '<div class="gctBox area-box-box" '
+                            +'data-type="'+type+'" area-box-item '
+                                +' area-box-'+type+' ></div>';
+                };
+                for(var i= 0,len=TYPES.length; i<len; i++){
+                    var one = TYPES[i];
+                    html += tplFn(one);
+                }
+                $box.html(html);
+            }
+            ,renderBoxsByCheckedStatus: function(){
+
+            }
+        };
+
+        return {
+            show: function(e) {
+              /*  var type ='district';
+                if(util.isEmptyObject(getCheckedStatusData().store)
+                    || !util.isEmptyObject(getCheckedStatusData().district)){
+                    type = 'store'
+                }
+                _f.showContent(type);*/
+                this.$ele.find(".add_out,.gCity").show();
+            }
+            ,hide: function(e) {
+                /*  $thisDom.find(".add_out,.gCity").hide();*/
+                console.log('hide');
+            }
+            ,renderAllByCheckedStatus: function(){
+                debugger;
+                _v.renderTitlesByCheckedStatus.call(this);
+                _v.renderBoxsByCheckedStatus.call(this);
+            }
+            ,renderTitlesToTpl: function(){
+                _f.renderTitlesToTpl.call(this);
+            }
+            ,renderTitlesByCheckedStatus: function(){
+                _f.renderTitlesByCheckedStatus.call(this);
+            }
+            ,renderBoxsToTpl: function(){
+                _f.renderBoxsToTpl.call(this);
+            }
+            ,renderBoxsByCheckedStatus: function(){
+                _f.renderBoxsByCheckedStatus.call(this);
+            }
+
         }
+    })();
+
+    var _c = (function(){
+        var _f = {
+            addEvent: function(){
+                _f._addEventOnEle.call(this);
+                _f._addEventOnPlug.call(this);
+            }
+            ,_addEventOnEle: function(){
+                var oThis = this
+                    ,isHide = true;
+                //隐藏添加 延时处理（当且仅当 离开div且 延时才hide）
+                oThis.$ele.hover(function(e){
+                    isHide = false;
+                    _v.show.call(oThis,e);
+                },function(e){
+                    isHide = true;
+                    setTimeout(function(){
+                        if(isHide){
+                            _v.hide.call(oThis,e);
+                        }
+                    },100);
+                });
+            }
+            ,_addEventOnPlug: function(){
+                var $ele =  this.$ele
+                    ,s = this.settings.isSelected;
+
+                $ele.find('[area-box-item]').on('click', $.proxy(_f.selectorBoxItem, this)); //区域
+                $ele.find('#cityClose').on('click',$.proxy(_v.hide, this));//‘X’关闭绑定事件
+
+                //TODO　等后续……
+                for(var o in s){
+                    if(s[o]){
+                        $ele.find('[area-title-'+o+']')
+                            .on('click',$.proxy(eval('_f.selector'+util.firstUpperCase(o)), this));//区域选择器事件
+                    }
+
+                }
+            }
+            ,loadTemplate: function(){
+                this.$ele.append(template);
+                _v.renderTitlesToTpl.call(this);
+                _v.renderBoxsToTpl.call(this);
+            }
+        };
+        return {
+            init: function(){
+                var oThis = this,
+                    checkedData = {};
+                _f.loadTemplate.call(oThis);
+                _m.initLoadDataByAsync.call(this,function(){
+                    _m.dealDataCheckedStatusToSettings.call(oThis);//初始化 settings 参数
+                    //暴露load data后接口
+                    checkedData = util._isEmptyObjToAttrNull(_m.getCheckedStatusData.call(oThis));
+                    oThis.settings.initLoadDo(checkedData);
+                    _v.renderAllByCheckedStatus.call(oThis);//渲染plugs，但没有控制显示
+                });
+                _f.addEvent.call(this);
+            }
+        }
+    })();
+
+    /**********************************入口*********************************/
+    $.fn.cStore = function(options) {
+        var settings = $.extend({}, defaults, options);
+        template = util._getTemplate();//模板只需要加载一次就OK
+        //处理 Sizzle 引擎
+        this.each(function(){
+            new CStore(this, settings);
+        });
     };
-    $.fn.cStore = function(method ) {
-        if(!cStore_config){
-            $.error( 'cStore_config does not exist on jQuery.cStore' );
-            return this;
-        }
-        //set config
-        defaults =  $.extend({}, defaults, cStore_config);
-        // Method calling logic
-        if ( methods[method] ) {
-            return methods[ method ].apply( this, Array.prototype.slice.call( arguments, 1 ));
-        } else if ( typeof method === 'object' || ! method ) {
-            return methods.init.apply( this, arguments );
-        } else {
-            $.error( 'Method ' +  method + ' does not exist on jQuery.cStore' );
-        }
-    };
+
 }(jQuery, window));
