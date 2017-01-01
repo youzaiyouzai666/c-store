@@ -4,12 +4,16 @@
  */
 ;(function ($, window) {
     "use strict";
-    var TYPES = ['province','city','district','store']
+    var TYPES = ['province','city','district','store']//一个枚举
         ,template = ''
+        ,cache = {
+            province: null
+            ,stores:{}
+        }
         ,defaults = {
             value: [11000000,11010000,11010200]//省市区县
             ,debug: true //调试模式
-            ,defaultTitle:['请选择','请选择','请选择','门店'] //默认显示
+            ,defaultTitle:{province:'请选择',city:'请选择',district:'请选择',store:'门店'} //默认显示
             ,structure:{
                 provinces: {
                     no: 'id'
@@ -51,8 +55,8 @@
             }
             //与TYPES强耦合
             ,isSelected: {
-                province: false
-                ,city: false
+                province: true
+                ,city: true
                 ,district: true
                 ,store: true
             }
@@ -103,7 +107,7 @@
                 return !0
             }
             ,showDebug: function(err){
-                if(settings.debug){
+                if(this.settings.debug){
                     console.log(err);
                 }
             }
@@ -162,16 +166,57 @@
                 return obj;
 
             }
-            ,_getTemplate: function(){
+            ,_getTemplate2: function(){
                 if(!window.cStore_template){
                     $.error('模板加载异常，请检查模板 by jquery.cStore ' );
                 }
                 return window.cStore_template;
             }
+            ,_isOneTYPES: function(type){
+                if(!TYPES || !this.isArrayFn(TYPES)){
+                    return false;
+                }
+                for(var i=0,len=TYPES.length; i<len; i++){
+                   if(TYPES[i] === type){
+                       return true;
+                   }
+                }
+                return false;
+            }
+            ,_valuesLength: function(values){
+                if(!values){
+                    return 0;  }
+              
+                var length = 0;
+                for(var i=0,len=values.length; i<len; i++){
+                    if(values[i]){
+                        length++
+                    }
+                }
+                return length;
+            }
         }
     })();
 
     /**********************************MVC*********************************/
+    /**
+     * Model层
+     *  设计思路： 因为后台接口的不确定性，所以整个modeal模块 应该是灵活可变的（应该是插件外面处理），
+     *             但本处进行了折中处理，目的是，当接口改变时，整个代码改动尽可能的少
+     *             只需要改变 initLoadDataByAsync方法中实现即可
+     *  整体的数据结构： 整个数据装在 this.setting 中
+     *    initLoadDataByAsync function 集中通过ajax 来得到数据
+     *    this.setting中 数据分为两大块：
+     *                 1.box中数据--->>> setting.provinces;setting.citys;setting.districts;setting.stores中
+     *                         注意，数据中都是以“s” 结尾，（citys）也是，因后续代码中需要通过
+     *                             TYPES = ['province','city','district','store']加“s”得到
+     *                 2.title中数据--->>>setting.checkedStatusData 中
+     *                         为了代码方便，添加了一个“setting.checkedStatus”，与 “setting.checkedStatusData”高度耦合
+     *                         因此附加了 getCheckedStatusData 和 setCheckedStatus 两个方法 来处理其中耦合关系
+     *  数据清洗：通过setting.structure 的参数来处理（setting.structure与ajax请求数据完全相关）
+     * @type {{initLoadDataByAsync, loadDataThreeByAsync, loadDataEndByAsync, dealDataCheckedStatusToSettings, getCheckedStatusData, setCheckedStatus}}
+     * @private
+     */
     var _m = (function() {
         var _f = {
             parseData: function(data, structure){
@@ -211,54 +256,78 @@
                 var s = this.settings
                     ,v = s.value;
 
+                s.checkedStatusData = {
+                    province:{}
+                    ,city: {}
+                    ,district: {}
+                    ,store: {}
+                }
                 for(var i=0,len=v.length; i<len; i++){
+                    if(!v[i]){
+                        return this;
+                    }
                     _f._dealDataCheckedStatusToSettingsByItem.apply(this,[v[i],TYPES[i]]);
                     // eval('_f._dealDataCheckedStatusToSettingsBy'+ util.firstUpperCase(TYPES[i])+'();');
                 }
             }
+            /**
+             * 通过no 与type来设置 checkedStatusData
+             *   数据源为：ajax得到的：setting.provinces;setting.stores
+             *        通过遍历得到：  setting.citys;setting.districts;
+             * @param no
+             * @param type
+             * @returns {_f}
+             * @private
+             */
             ,_dealDataCheckedStatusToSettingsByItem: function(no,type){
                 var item = {}
                     ,s = this.settings;
                 if(!no || !type){
                     $.error( '_dealDataCheckedStatusToSettingsByItem 参数有误 on jQuery.cStore' );
                 }
-
                 function dealData() {
                     item = util._getCheckData(s[type + 's'], no);
-                    s.checkedStatusData[type] = item;
+                    s.checkedStatusData[type] = $.extend(true,{},item);//切断引用关系
+                    delete s.checkedStatusData[type].children;//为了简化数据模型，checkedStatusData delete children
                 }
-                function dealDataChildren() {
-                    var  index = -1
-                        ,childType = '';
-                    index = util.arrayValueToIndex(TYPES, type);
-                    if (item.children && TYPES[index + 1]) {
-                        childType = TYPES[index + 1];
-                        if (item.children && util.isArrayFn(item.children)) {
-                            s[childType + 's'] = item.children;
-                        }
-                    }
-                }
-
-                dealData();
-                dealDataChildren();
-
+                dealData.call(this);
+                _m.setCheckedStatus.call(this,type);
                 return this;
             }
         };
         return {
+            /**
+             * 通过ajax 异步得到基本并进行数据清洗数据
+             * 得到基本数据后，在此基础上 通过value 得到setting.citys;setting.districts;setting.stores
+             *    需要注意：
+             *         1.当前需求是，两个ajax请求 且两请求可以并行的请求，因此以计数器设计并行请求
+             *         2.对数据的清洗
+             *         3.得到全部基础数据
+             * @param next
+             */
             initLoadDataByAsync: function(next){
                 var count = 0,
                     oThis = this;
-
-                _m.loadDataThreeByAsync.call(oThis,function(data){
-                    oThis.settings.provinces = data;
-                    handle();
-                });
-                if(oThis.settings.value.length >=3){
-                    _m.loadDataEndByAsync.call(oThis,oThis.settings.value[2],function(data){
-                        oThis.settings.stores = data;
+                if(!cache.province){
+                    _m.loadDataThreeByAsync.call(oThis,function(data){
+                        oThis.settings.provinces =cache.province = data;
                         handle();
                     });
+                }else{
+                    oThis.settings.provinces =cache.province;
+                    handle();
+                }
+                //如果区数据未被选中，则不发送请求
+                if( util._valuesLength(oThis.settings.value) >=3){
+                    var no = oThis.settings.value[2];
+                    if(!cache.stores[no]){
+                        _m.loadDataEndByAsync.call(oThis,no,function(data){
+                            oThis.settings.stores = cache.stores[no] = data;
+                            handle();
+                        });
+                    }else{
+                        oThis.settings.stores = cache.stores[no];
+                    }
                 }else{
                     handle();
                 }
@@ -266,11 +335,44 @@
                  * 并行 当且上面两个async 请求都完成后才触发
                  */
                 function handle(){
+                    /**
+                     * 得到剩下全部基础数据
+                     * 通过aja请求已有数据的的children，通过value.no 来查询出实际值
+                     * 得到setting.citys;setting.districts;setting.stores
+                     *
+                     */
+                    function dealDataChildren() {
+                        var s = this.settings;
+                        function setItem(type,no) {
+                            var index = -1
+                                , item = {}
+                                , s = this.settings
+                                , childType = '';
+
+                            index = util.arrayValueToIndex(TYPES, type);
+                            item = util._getCheckData(s[type + 's'], no);;
+                            if (item.children && TYPES[index + 1]) {
+                                childType = TYPES[index + 1];
+                                if (item.children && util.isArrayFn(item.children)) {
+                                    s[childType + 's'] = item.children;
+                                }
+                            }
+                        }
+                        for(var i=0,len=TYPES.length; i<len; i++){
+                            if(s.value[i]){
+                                setItem.call(this,TYPES[i],s.value[i]);
+                            }
+                        }
+
+
+                    }
                     count++;
                     if(count === 2){
+                        dealDataChildren.call(oThis);// 3.得到全部基础数据
                         next.call(oThis);
                     }
                 }
+
             }
             ,loadDataThreeByAsync: function(next){
                 var structure = this.settings.structure.provinces,
@@ -296,9 +398,31 @@
             }
             ,dealDataCheckedStatusToSettings: function(){
                 _f.dealDataCheckedStatusToSettings.call(this);
+
+                /**
+                 * 校验 settings.value[2]是否属于this.settings.districts 中
+                 */
+                function checkOutData() {
+                    var isStoreNo = false
+                        , lens = this.settings.districts;
+                    for (var i = 0; i < lens.length; i++) {
+                        var one = lens[i];
+                        if (one.no == this.settings.value[2]) {
+                            one.children = this.settings.stores;
+                            isStoreNo = true;
+                            break;
+                        }
+                    }
+                    if (!isStoreNo) {
+                        util.showDebug.call(this, 'settings.value[2]='
+                            + this.settings.value[2] + '在this.settings.provinces中无')
+                    }
+                }
+
+                checkOutData.call(this);
             }
             /**
-             * 因 checkedStatus 与 checkedStatusData 耦合关系
+             * 因：checkedStatus 与 checkedStatusData 耦合关系
              * 通过checkedStatus 得到 checkedStatusData
              * 问题是： 在get 方法中 级联 改了checkedStatusData本身，但为了 
              * @returns {defaults.checkedStatusData|{province, city, district, store}|{province, city, district, store, stores}}
@@ -315,12 +439,13 @@
                     if(one === this.settings.checkedStatus){
                         isNull = true;
                     }
-
                 }
                 return data;
             }
-            ,setCheckedStatus: function(){
-
+            ,setCheckedStatus: function(type){
+                if(type && util._isOneTYPES(type)){
+                    this.settings.checkedStatus = type;
+                }
             }
         }
     })();
@@ -334,10 +459,10 @@
 
                 for(var i=0,len=s.length; i<len; i++){
                     var o = s[i];
-                    html+= '<a href="javascript:;" area-title-'+ o +'=""'
+                    html+= '<a href="javascript:;" area-title-item="" area-title-'+ o +'=""'
                         +'data-type="'+ o +'" '
                         +'data-no="'+ -1 +'"> '
-                        +'<b>'+ this.settings.defaultTitle[i]  +'</b> '
+                        +'<b>'+ this.settings.defaultTitle[TYPES[i]]  +'</b> '
                         +'<i></i> </a>';
                 }
                 $title.html(html);
@@ -350,8 +475,7 @@
                 for(var o in s){
                         $title.find('[area-title-'+o+']')
                             .data('no',checked[o].no)
-                                .find('b').text(checked[o].name);
-                        console.log( 'area-title-'+o,$title.find('area-title-'+o).html());
+                                .find('b').text(checked[o].name ||this.settings.defaultTitle[o]);
 
                 }
             }
@@ -369,16 +493,19 @@
                 }
                 $box.html(html);
             }
+            /**
+             * 通过 settings[TYPES +'s'] 数据 render Box
+             */
             ,renderBoxsByCheckedStatus: function(){
                 var $boxs = this.$ele.find('[area-box]')
                     ,$box = {}
                     ,s = this.settings.isSelected //因为 isSelected 可以变
                     ,checked = _m.getCheckedStatusData.call(this);
 
-                var ftl = function(d,type){
+                function ftl(d,type){
                     //TODO 这个数据处理有问题，完全依赖于后端返回数据结构，应该init时对数据进行清洗一次
-                    return ' <span><a href="javascript:;" title="" data-no="'
-                        +d.no+'data-type="'+type+'"area-box-'+type+'"'
+                    return ' <span data-no="'+d.no+'"><a href="javascript:;" title="" data-no="'
+                        +d.no+'"data-type="'+type+'"area-box-'+type+'"'
                         +'" data-val="" class="area-box-item"  >'
                         +d.name+'</a></span>';
                 };
@@ -396,12 +523,15 @@
                     $box = $boxs.find('[area-box-'+o+']');
                     $box.html(html);
                 }
+
                 for(var o in s){
                     if(s[o]){
                         renderBoxs.call(this, o);
                     }
                 }
             }
+
+
         };
 
         return {
@@ -415,11 +545,10 @@
                 this.$ele.find(".add_out,.gCity").show();
             }
             ,hide: function(e) {
-                /*  $thisDom.find(".add_out,.gCity").hide();*/
+                 /* this.$ele.find(".add_out,.gCity").hide();*/
                 console.log('hide');
             }
             ,renderAllByCheckedStatus: function(){
-                debugger;
                 _v.renderTitlesByCheckedStatus.call(this);
                 _v.renderBoxsByCheckedStatus.call(this);
             }
@@ -435,7 +564,29 @@
             ,renderBoxsByCheckedStatus: function(){
                 _f.renderBoxsByCheckedStatus.call(this);
             }
+            /**
+             * 控制显隐藏及选中状态
+             * 具体是根据状态 showType 来进行判断
+             *
+             */
+            ,showAllByCheckedStatus: function(showType){
+                _v.showTitlesByCheckedStatus.call(this,showType);
+                _v.showBoxsByCheckedStatus.call(this,showType);
+            }
+            ,showTitlesByCheckedStatus: function(showType){
+                var $title = this.$ele.find('[area-title]');
 
+                $title.find('[area-title-item]').removeClass('cur');
+                $title.find('[area-title-'+showType+']')
+                        .addClass('cur');
+
+            }
+            ,showBoxsByCheckedStatus: function(showType){
+                var $boxs = this.$ele.find('[area-box]');
+
+                $boxs.find('[area-box-item]').hide();
+                $boxs.find('[area-box-'+showType+']').show();
+            }
         }
     })();
 
@@ -465,35 +616,94 @@
                 var $ele =  this.$ele
                     ,s = this.settings.isSelected;
 
-                $ele.find('[area-box-item]').on('click', $.proxy(_f.selectorBoxItem, this)); //区域
+                $ele.find('[area-title-item]').on('click',$.proxy(_f.selectorTitles, this))
+
                 $ele.find('#cityClose').on('click',$.proxy(_v.hide, this));//‘X’关闭绑定事件
-
-                //TODO　等后续……
-                for(var o in s){
-                    if(s[o]){
-                        $ele.find('[area-title-'+o+']')
-                            .on('click',$.proxy(eval('_f.selector'+util.firstUpperCase(o)), this));//区域选择器事件
-                    }
-
-                }
+                $ele.find('[area-box-item]').on('click', $.proxy(_f.selectorBoxItems, this)); //区域
             }
+            /**
+             * 加载模板
+             * 模板包括两部分，
+             * 1 部分是 jquery.cStore.template.js（整体框架）
+             * 2.包括（title和box拼装的html）
+             */
             ,loadTemplate: function(){
                 this.$ele.append(template);
                 _v.renderTitlesToTpl.call(this);
                 _v.renderBoxsToTpl.call(this);
+            }
+            ,selectorBoxItems: function(e){
+                var $e = $(e.target)
+                    ,type =$e.parents('[area-box-item]').data('type')
+                    ,no = $(e.target).data('no');
+
+                //只有 isSelected 为true 才能触发
+                if(!this.settings.isSelected[type]){
+                    return false;
+                }
+                var index = util.arrayValueToIndex(TYPES, type)
+                    ,values= this.settings.value || [];
+                values[index] = no;
+                for(var i=0,len=values.length; i<len; i++){
+                    if(i> index){
+                        values[i] = null;
+                    }
+                }
+                _f.controlPlags.call(this);
+
+            }
+            ,selectorTitles: function(e){
+                var $e = $(e.target)
+                    ,type = $e.data('type') || $e.parent('[area-title-item]').data('type');
+                //只有 isSelected 为true 才能触发
+                if(this.settings.isSelected[type]){
+                    _v.showAllByCheckedStatus.call(this,type);
+                }
+
+            }
+            /**
+             * 通过类型来选择显示
+             *   如果选中前一级别，那么显示当前级别，但最后一级，则显示最后一级别
+             * @param type
+             * @returns {string}
+             */
+            ,showType: function(type){
+                var index = util.arrayValueToIndex(TYPES,type);
+                if(index == 3){
+                    return TYPES[3];
+                }else{
+                    return TYPES[index+1];
+                }
+            }
+            /**
+             * 通过value 重新ajax 数据 并重新渲染整个插件
+             * @param next
+             */
+            ,controlPlags: function(next){
+                var oThis = this;
+                _m.initLoadDataByAsync.call(this,function(){
+                    _m.dealDataCheckedStatusToSettings.call(oThis);//初始化 settings 参数
+                    _v.renderAllByCheckedStatus.call(oThis);//渲染plugs，但没有控制显示
+                    _v.showAllByCheckedStatus.call(oThis,_f.showType(oThis.settings.checkedStatus));
+                    if(next){
+                        next.call(oThis);
+                    }
+                });
             }
         };
         return {
             init: function(){
                 var oThis = this,
                     checkedData = {};
-                _f.loadTemplate.call(oThis);
-                _m.initLoadDataByAsync.call(this,function(){
-                    _m.dealDataCheckedStatusToSettings.call(oThis);//初始化 settings 参数
+                _f.loadTemplate.call(oThis);//加载模板
+                /**
+                 *  通过ajax得到数据 后处理数据
+                 *  function  initLoadDataByAsync中
+                 */
+                _f.controlPlags.call(this,function(){
                     //暴露load data后接口
                     checkedData = util._isEmptyObjToAttrNull(_m.getCheckedStatusData.call(oThis));
                     oThis.settings.initLoadDo(checkedData);
-                    _v.renderAllByCheckedStatus.call(oThis);//渲染plugs，但没有控制显示
                 });
                 _f.addEvent.call(this);
             }
@@ -503,7 +713,7 @@
     /**********************************入口*********************************/
     $.fn.cStore = function(options) {
         var settings = $.extend({}, defaults, options);
-        template = util._getTemplate();//模板只需要加载一次就OK
+        template = util._getTemplate2();//模板只需要加载一次就OK
         //处理 Sizzle 引擎
         this.each(function(){
             new CStore(this, settings);
